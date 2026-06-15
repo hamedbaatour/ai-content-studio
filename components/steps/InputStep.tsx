@@ -18,9 +18,10 @@ import { buildGenerationPrompt, parseScriptJson } from "@/lib/ai/prompts";
 import { addFeedbackLog } from "@/lib/db/feedback-db";
 import { getAggregatedPreferences } from "@/lib/personalization";
 import type { ContentType, Script, Tone, Style } from "@/lib/types";
-import { Sparkles, Wand2 } from "lucide-react";
+import { Sparkles, Wand2, Volume2 } from "lucide-react";
 import { toast } from "sonner";
 import { useMemo, useEffect } from "react";
+import { Switch } from "@/components/ui/switch";
 
 const CONTENT_TYPES: { value: ContentType; label: string }[] = [
   { value: "tiktok", label: "TikTok / Reels" },
@@ -60,6 +61,8 @@ export function InputStep() {
   const setStep = useAppStore((s) => s.setStep);
   const isLoading = useAppStore((s) => s.isLoading);
   const loadingMessage = useAppStore((s) => s.loadingMessage);
+  const audioTagsEnabled = useAppStore((s) => s.audioTagsEnabled);
+  const setAudioTagsEnabled = useAppStore((s) => s.setAudioTagsEnabled);
 
   const isReady = useMemo(
     () => draft.brainDump.trim().length > 20,
@@ -75,7 +78,7 @@ export function InputStep() {
     setLoading(true, "Crafting your script...");
     try {
       const preferences = await getAggregatedPreferences();
-      const { system, user } = buildGenerationPrompt({ draft, preferences });
+      const { system, user } = buildGenerationPrompt({ draft, preferences, audioTagsEnabled });
       const raw = await generateText({
         settings,
         messages: [
@@ -255,6 +258,23 @@ export function InputStep() {
               <span>90s</span>
             </div>
           </div>
+        </div>
+
+        <div className="flex items-center justify-between rounded-xl border bg-card p-4">
+          <div className="flex items-center gap-3">
+            <Volume2 className="h-5 w-5 text-primary" />
+            <div>
+              <Label className="text-sm font-medium">Audio tags</Label>
+              <p className="text-xs text-muted-foreground">
+                Add voiceover direction tags like [EXCITED], [PAUSES], [WHISPERING].
+              </p>
+            </div>
+          </div>
+          <Switch
+            checked={audioTagsEnabled}
+            onCheckedChange={setAudioTagsEnabled}
+            aria-label="Toggle audio tags"
+          />
         </div>
 
         <Button

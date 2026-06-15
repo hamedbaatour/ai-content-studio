@@ -107,6 +107,7 @@ export interface AppState {
   isLoading: boolean;
   loadingMessage: string;
   error: string | null;
+  audioTagsEnabled: boolean;
   ui: {
     activeSegmentId: string | null;
     showProviderSettings: boolean;

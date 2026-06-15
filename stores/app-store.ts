@@ -25,7 +25,7 @@ const defaultSettings: ProviderSettings = {
   ollamaBaseUrl: "http://localhost:11434",
 };
 
-const initialState: Omit<AppState, "setStep" | "setDraft" | "setSettings" | "setCurrentScript" | "addVersion" | "setLoading" | "setError" | "setUiField" | "restoreVersion" | "updateSegmentText" | "resetDraft"> = {
+const initialState: Omit<AppState, "setStep" | "setDraft" | "setSettings" | "setCurrentScript" | "addVersion" | "setLoading" | "setError" | "setUiField" | "restoreVersion" | "updateSegmentText" | "updateSegmentVisualPrompt" | "resetDraft" | "setAudioTagsEnabled"> = {
   step: "input",
   draft: defaultDraft,
   settings: defaultSettings,
@@ -34,6 +34,7 @@ const initialState: Omit<AppState, "setStep" | "setDraft" | "setSettings" | "set
   isLoading: false,
   loadingMessage: "",
   error: null,
+  audioTagsEnabled: true,
   ui: {
     activeSegmentId: null,
     showProviderSettings: false,
@@ -55,6 +56,7 @@ interface Actions {
   ) => void;
   updateSegmentText: (segmentId: string, text: string) => void;
   updateSegmentVisualPrompt: (segmentId: string, visualPrompt: string) => void;
+  setAudioTagsEnabled: (enabled: boolean) => void;
   resetDraft: () => void;
 }
 
@@ -125,6 +127,10 @@ export const useAppStore = create<AppState & Actions>()(
               if (segment) segment.visualPrompt = visualPrompt;
             }
           }),
+        setAudioTagsEnabled: (enabled) =>
+          set((state) => {
+            state.audioTagsEnabled = enabled;
+          }),
         resetDraft: () =>
           set((state) => {
             state.draft = defaultDraft;
@@ -132,19 +138,22 @@ export const useAppStore = create<AppState & Actions>()(
             state.versions = [];
             state.step = "input";
             state.error = null;
+            state.audioTagsEnabled = true;
           }),
       }),
       {
         name: "content-studio-store",
-        version: 3,
+        version: 4,
         partialize: (state) => ({
           draft: state.draft,
           settings: state.settings,
+          audioTagsEnabled: state.audioTagsEnabled,
         }),
         migrate: (persistedState: unknown, version: number) => {
           const state = persistedState as {
             draft?: { length?: number; featureDescription?: string; usefulness?: string; brainDump?: string };
             settings?: { provider?: string; model?: string };
+            audioTagsEnabled?: boolean;
           };
 
           if (version < 1) {
@@ -183,6 +192,13 @@ export const useAppStore = create<AppState & Actions>()(
             };
             if (state?.settings?.provider === "groq" && state.settings.model && groqModelMapping[state.settings.model]) {
               state.settings.model = groqModelMapping[state.settings.model];
+            }
+          }
+
+          if (version < 4) {
+            // Audio tags feature added; default to enabled for new behavior
+            if (typeof state.audioTagsEnabled !== "boolean") {
+              state.audioTagsEnabled = true;
             }
           }
 

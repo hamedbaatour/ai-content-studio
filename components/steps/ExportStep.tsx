@@ -9,13 +9,17 @@ import { Label } from "@/components/ui/label";
 import { ArrowLeft, RotateCcw, Copy, Download, Check } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
+import { Checkbox } from "@/components/ui/checkbox";
+import { stripAudioTags } from "@/lib/ai/prompts";
 
 export function ExportStep() {
   const currentScript = useAppStore((s) => s.currentScript);
   const setStep = useAppStore((s) => s.setStep);
   const resetDraft = useAppStore((s) => s.resetDraft);
+  const audioTagsEnabled = useAppStore((s) => s.audioTagsEnabled);
   const [copied, setCopied] = useState(false);
   const [includeVisualPrompts, setIncludeVisualPrompts] = useState(false);
+  const [includeAudioTags, setIncludeAudioTags] = useState(audioTagsEnabled);
 
   if (!currentScript) {
     return (
@@ -28,9 +32,14 @@ export function ExportStep() {
     );
   }
 
+  const formatSegmentText = (text: string) => {
+    return includeAudioTags ? text : stripAudioTags(text);
+  };
+
   const formatSegment = (text: string, visualPrompt?: string) => {
-    if (!includeVisualPrompts || !visualPrompt?.trim()) return text;
-    return `${text}\n\n[visual:] ${visualPrompt.trim()} [/visual]`;
+    const body = formatSegmentText(text);
+    if (!includeVisualPrompts || !visualPrompt?.trim()) return body;
+    return `${body}\n\n[visual:] ${visualPrompt.trim()} [/visual]`;
   };
 
   const fullScript = currentScript.segments
@@ -92,10 +101,17 @@ export function ExportStep() {
           <div className="min-w-0">
             <h3 className="truncate font-semibold">{currentScript.title}</h3>
             <p className="text-xs text-muted-foreground">
-              {currentScript.segments.length} segments · {fullScript.split(/\s+/).length} words
+              {currentScript.segments.length} segments · {fullScript.split(/\s+/).filter(Boolean).length} words
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            <Label className="flex cursor-pointer items-center gap-2 text-xs font-normal">
+              <Checkbox
+                checked={includeAudioTags}
+                onCheckedChange={(checked) => setIncludeAudioTags(Boolean(checked))}
+              />
+              Include audio tags
+            </Label>
             <Label className="flex cursor-pointer items-center gap-2 text-xs font-normal">
               <input
                 type="checkbox"

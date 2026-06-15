@@ -30,6 +30,7 @@ import {
   buildVisualPrompt,
   instructionFromActionType,
   parseVariationsJson,
+  stripAudioTags,
 } from "@/lib/ai/prompts";
 import { addFeedbackLog } from "@/lib/db/feedback-db";
 import { getAggregatedPreferences } from "@/lib/personalization";
@@ -68,6 +69,7 @@ interface SegmentCardProps {
   segment: ScriptSegment;
   script: Script;
   onSelectText: (segmentId: string, rect: DOMRect, text: string) => void;
+  audioTagsEnabled?: boolean;
 }
 
 const QUICK_ACTIONS: {
@@ -235,7 +237,7 @@ function formatVersionTime(timestamp: number): string {
   });
 }
 
-export function SegmentCard({ segment, script, onSelectText }: SegmentCardProps) {
+export function SegmentCard({ segment, script, onSelectText, audioTagsEnabled = true }: SegmentCardProps) {
   const settings = useAppStore((s) => s.settings);
   const draft = useAppStore((s) => s.draft);
   const updateSegmentText = useAppStore((s) => s.updateSegmentText);
@@ -286,6 +288,7 @@ export function SegmentCard({ segment, script, onSelectText }: SegmentCardProps)
         actionType: action,
         draft,
         preferences,
+        audioTagsEnabled,
       });
 
       const raw = await generateText({
@@ -342,6 +345,7 @@ export function SegmentCard({ segment, script, onSelectText }: SegmentCardProps)
         allSegments: script.segments,
         draft,
         preferences,
+        audioTagsEnabled,
       });
 
       const raw = await generateText({
@@ -415,7 +419,11 @@ export function SegmentCard({ segment, script, onSelectText }: SegmentCardProps)
   };
 
   const handleTextChange = (value: string) => {
-    updateSegmentText(segment.id, value);
+    if (audioTagsEnabled) {
+      updateSegmentText(segment.id, value);
+    } else {
+      updateSegmentText(segment.id, stripAudioTags(value));
+    }
   };
 
   const handleVisualPromptChange = (value: string) => {
@@ -480,8 +488,9 @@ export function SegmentCard({ segment, script, onSelectText }: SegmentCardProps)
     onSelectText(segment.id, rect, text);
   }, [segment.id, onSelectText]);
 
-  const words = countWords(segment.text);
-  const chars = segment.text.length;
+  const displayText = audioTagsEnabled ? segment.text : stripAudioTags(segment.text);
+  const words = countWords(displayText);
+  const chars = displayText.length;
 
   return (
     <Card className="overflow-hidden transition-shadow hover:shadow-md">
@@ -590,7 +599,7 @@ export function SegmentCard({ segment, script, onSelectText }: SegmentCardProps)
         </div>
       </CardHeader>
 
-      <SegmentThoughtInput segment={segment} script={script} />
+      <SegmentThoughtInput segment={segment} script={script} audioTagsEnabled={audioTagsEnabled} />
 
       <CardContent className="relative p-0">
         {isLoading && (
@@ -603,7 +612,7 @@ export function SegmentCard({ segment, script, onSelectText }: SegmentCardProps)
         )}
         <Textarea
           ref={textareaRef}
-          value={segment.text}
+          value={audioTagsEnabled ? segment.text : stripAudioTags(segment.text)}
           onChange={(e) => handleTextChange(e.target.value)}
           onMouseUp={handleMouseUp}
           onKeyUp={handleMouseUp}

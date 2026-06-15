@@ -15,13 +15,14 @@ import { toast } from "sonner";
 interface SegmentThoughtInputProps {
   segment: ScriptSegment;
   script: Script;
+  audioTagsEnabled?: boolean;
 }
 
 function generateId(): string {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
-export function SegmentThoughtInput({ segment, script }: SegmentThoughtInputProps) {
+export function SegmentThoughtInput({ segment, script, audioTagsEnabled = true }: SegmentThoughtInputProps) {
   const settings = useAppStore((s) => s.settings);
   const draft = useAppStore((s) => s.draft);
   const setCurrentScript = useAppStore((s) => s.setCurrentScript);
@@ -47,6 +48,7 @@ export function SegmentThoughtInput({ segment, script }: SegmentThoughtInputProp
         thought: trimmed,
         draft,
         preferences,
+        audioTagsEnabled,
       });
 
       const raw = await generateText({

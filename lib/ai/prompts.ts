@@ -1,10 +1,25 @@
 import type {
   Draft,
+  Script,
   ScriptSegment,
   SegmentType,
   AggregatedPreferences,
   FeedbackActionType,
 } from "@/lib/types";
+
+export const AUDIO_TAGS = {
+  emotional: ["EXCITED", "NERVOUS", "FRUSTRATED", "TIRED"],
+  reactions: ["GASP", "SIGH", "LAUGHS", "GULPS"],
+  volume: ["WHISPERING", "SHOUTING", "QUIETLY", "LOUDLY"],
+  pacing: ["PAUSES", "STAMMERS", "RUSHED"],
+} as const;
+
+export const ALL_AUDIO_TAGS: string[] = [
+  ...AUDIO_TAGS.emotional,
+  ...AUDIO_TAGS.reactions,
+  ...AUDIO_TAGS.volume,
+  ...AUDIO_TAGS.pacing,
+];
 
 const SEGMENT_LABELS: Record<SegmentType, string> = {
   hook: "Hook",
@@ -99,10 +114,29 @@ Segment types you can use: hook, problem, solution, benefit, proof, objection, c
 export interface GenerationPromptInput {
   draft: Draft;
   preferences: AggregatedPreferences | null;
+  audioTagsEnabled?: boolean;
+}
+
+function buildAudioTagInstructions(): string {
+  return `
+AUDIO TAG DIRECTION (IMPORTANT):
+This script will be read as a voiceover for a short-form video. Insert voice direction tags from this exact list where they improve delivery:
+${ALL_AUDIO_TAGS.map((tag) => `- [${tag}]`).join("\n")}
+
+Guidelines for placing tags:
+- Layer tags inline before the words they affect, e.g. "[EXCITED] This is the part you’ve been waiting for!"
+- Use [PAUSES] before a punchline or key reveal.
+- Use [EXCITED] or [LOUDLY] at hooks and high-energy moments.
+- Use [WHISPERING] or [QUIETLY] for intimacy or secrets.
+- Use [NERVOUS], [STAMMERS], or [GULPS] when expressing doubt or vulnerability.
+- Use [GASP], [SIGH], or [LAUGHS] as natural reactions.
+- Use [RUSHED] for urgency.
+- Do not invent tags that are not in the list above.
+- Keep the text meaningful and readable; tags should enhance delivery, not clutter the script.`;
 }
 
 export function buildGenerationPrompt(input: GenerationPromptInput) {
-  const { draft, preferences } = input;
+  const { draft, preferences, audioTagsEnabled } = input;
 
   const system = `You are an elite short-form content marketer. You write scroll-stopping scripts for social media.
 The user will give you a raw brain dump of ideas. Your job is to read it, extract the strongest angle, and turn it into a compelling, structured script.
@@ -116,6 +150,7 @@ Rules:
 - Make every segment earn its place.
 - Do not use emojis unless they genuinely add clarity.
 - Keep sentences punchy and easy to read aloud.
+${audioTagsEnabled ? buildAudioTagInstructions() : ""}
 ${buildPersonalizationNote(preferences)}`;
 
   const user = `Create a ${CONTENT_TYPE_LABELS[draft.contentType] || "short-form script"}.
@@ -136,6 +171,13 @@ Make it feel like it was written by a human marketer who deeply understands the 
   return { system, user };
 }
 
+function buildAudioTagPreservationNote(audioTagsEnabled?: boolean): string {
+  if (!audioTagsEnabled) return "";
+  return `
+- The script currently uses audio direction tags from this list: ${ALL_AUDIO_TAGS.map((t) => `[${t}]`).join(", ")}.
+- Preserve any existing tags in the segment and add or adjust tags only where they genuinely improve delivery.`;
+}
+
 export interface RefinementPromptInput {
   segment: ScriptSegment;
   allSegments: ScriptSegment[];
@@ -143,10 +185,11 @@ export interface RefinementPromptInput {
   actionType: FeedbackActionType;
   draft: Draft;
   preferences: AggregatedPreferences | null;
+  audioTagsEnabled?: boolean;
 }
 
 export function buildRefinementPrompt(input: RefinementPromptInput) {
-  const { segment, allSegments, instruction, draft, preferences } = input;
+  const { segment, allSegments, instruction, draft, preferences, audioTagsEnabled } = input;
 
   const system = `You are an elite short-form content editor. You rewrite a single segment of a social media script based on precise feedback.
 
@@ -155,6 +198,7 @@ Rules:
 - Preserve the original meaning and context unless the user explicitly asks to change it.
 - Match the overall tone and style of the script.
 - Return only the new text for the segment, with no labels, JSON, or extra commentary.
+${buildAudioTagPreservationNote(audioTagsEnabled)}
 ${buildPersonalizationNote(preferences)}`;
 
   const fullScriptContext = allSegments
@@ -187,10 +231,11 @@ export interface ThoughtIntegrationPromptInput {
   thought: string;
   draft: Draft;
   preferences: AggregatedPreferences | null;
+  audioTagsEnabled?: boolean;
 }
 
 export function buildThoughtIntegrationPrompt(input: ThoughtIntegrationPromptInput) {
-  const { segment, allSegments, thought, draft, preferences } = input;
+  const { segment, allSegments, thought, draft, preferences, audioTagsEnabled } = input;
 
   const system = `You are an elite short-form content editor. A user has a thought they want you to gracefully integrate into a specific segment of a social media script.
 
@@ -200,6 +245,7 @@ Rules:
 - Keep the surrounding script flow and context in mind.
 - Match the requested tone, style, and target length.
 - Return ONLY the rewritten segment text. No labels, JSON, or extra commentary.
+${buildAudioTagPreservationNote(audioTagsEnabled)}
 ${buildPersonalizationNote(preferences)}`;
 
   const fullScriptContext = allSegments
@@ -388,6 +434,7 @@ export interface SegmentVariationsPromptInput {
   allSegments: ScriptSegment[];
   draft: Draft;
   preferences: AggregatedPreferences | null;
+  audioTagsEnabled?: boolean;
 }
 
 /**
@@ -395,7 +442,7 @@ export interface SegmentVariationsPromptInput {
  * Edit this function in lib/ai/prompts.ts if you want to change the AI instructions.
  */
 export function buildSegmentVariationsPrompt(input: SegmentVariationsPromptInput) {
-  const { segment, allSegments, draft, preferences } = input;
+  const { segment, allSegments, draft, preferences, audioTagsEnabled } = input;
 
   const system = `You are an elite short-form content marketer.
 Your task is to generate 3 strong variations of a single segment from a social media script.
@@ -406,6 +453,7 @@ Rules:
 - Keep them roughly the same length as the original.
 - Match the requested tone and style.
 - Do not use emojis unless they genuinely add clarity.
+${buildAudioTagPreservationNote(audioTagsEnabled)}
 ${buildPersonalizationNote(preferences)}`;
 
   const fullScriptContext = allSegments
@@ -453,4 +501,84 @@ export function parseVariationsJson(raw: string): { label: string; text: string 
     // ignore
   }
   return null;
+}
+
+export interface AudioTagPromptInput {
+  script: Script;
+  draft: Draft;
+  preferences: AggregatedPreferences | null;
+}
+
+export function buildAudioTagPrompt(input: AudioTagPromptInput) {
+  const { script, draft, preferences } = input;
+
+  const system = `You are an expert voiceover director for short-form social media videos.
+Your job is to take an existing script and insert audio delivery tags to guide the narrator's tone, energy, reactions, pacing, and rhythm.
+
+Rules:
+- Only use tags from this exact list: ${ALL_AUDIO_TAGS.map((t) => `[${t}]`).join(", ")}.
+- Place tags inline, right before the words they affect. Tags can be layered, e.g. "[NERVOUS] I... I’m not sure this is going to work. [GULPS] But let’s try anyway."
+- Keep the original text meaningful. Do not rewrite ideas; only add tags and make small adjustments needed for natural delivery.
+- Match the requested tone (${TONE_LABELS[draft.tone]}) and style (${STYLE_LABELS[draft.style]}).
+- Tags should feel natural for a spoken voiceover, not random or excessive.
+- Respond with a JSON object only, preserving the original segment types and order.`;
+
+  const segmentList = script.segments
+    .map(
+      (s) =>
+        `{ "type": "${s.type}", "text": ${JSON.stringify(stripAudioTags(s.text))} }`
+    )
+    .join(",\n");
+
+  const user = `Here is the script to tag:
+[
+${segmentList}
+]
+
+Tone: ${TONE_LABELS[draft.tone]}
+Style: ${STYLE_LABELS[draft.style]}
+
+Return ONLY a JSON object with this structure:
+{
+  "segments": [
+    { "type": "hook", "text": "[EXCITED] ..." },
+    ...
+  ]
+}`;
+
+  return { system, user };
+}
+
+export function parseAudioTaggedSegmentsJson(
+  raw: string
+): { type: SegmentType; text: string }[] | null {
+  try {
+    const jsonMatch = raw.match(/\{[\s\S]*\}/);
+    const jsonStr = jsonMatch ? jsonMatch[0] : raw;
+    const parsed = JSON.parse(jsonStr);
+    if (parsed && Array.isArray(parsed.segments)) {
+      return parsed.segments
+        .filter((s: { type?: string; text?: string }) => s.type && s.text)
+        .map((s: { type: string; text: string }) => ({
+          type: s.type as SegmentType,
+          text: s.text.trim(),
+        }));
+    }
+  } catch {
+    // ignore
+  }
+  return null;
+}
+
+const AUDIO_TAG_PATTERN = new RegExp(
+  `\\[(${ALL_AUDIO_TAGS.join("|")})\\]`,
+  "g"
+);
+
+export function stripAudioTags(text: string): string {
+  return text.replace(AUDIO_TAG_PATTERN, "").replace(/\s+/g, " ").trim();
+}
+
+export function hasAudioTags(text: string): boolean {
+  return AUDIO_TAG_PATTERN.test(text);
 }

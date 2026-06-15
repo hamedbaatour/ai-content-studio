@@ -47,13 +47,14 @@ export function GlobalControls() {
   const setCurrentScript = useAppStore((s) => s.setCurrentScript);
   const addVersion = useAppStore((s) => s.addVersion);
   const setLoading = useAppStore((s) => s.setLoading);
+  const audioTagsEnabled = useAppStore((s) => s.audioTagsEnabled);
 
   const handleApplyGlobal = async () => {
     if (!currentScript) return;
     setLoading(true, "Applying global adjustments...");
     try {
       const preferences = await getAggregatedPreferences();
-      const { system, user } = buildGenerationPrompt({ draft, preferences });
+      const { system, user } = buildGenerationPrompt({ draft, preferences, audioTagsEnabled });
       const raw = await generateText({
         settings,
         messages: [

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect, useMemo } from "react";
+import { toast } from "sonner";
 import { useAppStore } from "@/stores/app-store";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -11,7 +12,10 @@ import { VersionHistory } from "@/components/script/VersionHistory";
 import { SelectionToolbar } from "@/components/script/SelectionToolbar";
 import { SuggestionPanel } from "@/components/script/SuggestionPanel";
 import { formatPreferenceSummary, getAggregatedPreferences } from "@/lib/personalization";
-import { ArrowLeft, ArrowRight, Save, FileText } from "lucide-react";
+import { ArrowLeft, ArrowRight, Save, FileText, Volume2, RefreshCw } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
+import { buildAudioTagPrompt, parseAudioTaggedSegmentsJson, stripAudioTags } from "@/lib/ai/prompts";
+import { generateText } from "@/lib/ai/providers";
 
 interface SelectionState {
   segmentId: string;
@@ -29,8 +33,14 @@ export function ReviewStep() {
   const setStep = useAppStore((s) => s.setStep);
   const addVersion = useAppStore((s) => s.addVersion);
   const setCurrentScript = useAppStore((s) => s.setCurrentScript);
+  const audioTagsEnabled = useAppStore((s) => s.audioTagsEnabled);
+  const setAudioTagsEnabled = useAppStore((s) => s.setAudioTagsEnabled);
+  const draft = useAppStore((s) => s.draft);
+  const settings = useAppStore((s) => s.settings);
+  const setLoading = useAppStore((s) => s.setLoading);
 
   const [selection, setSelection] = useState<SelectionState | null>(null);
+  const [isRegeneratingTags, setIsRegeneratingTags] = useState(false);
   const [prefsSummary, setPrefsSummary] = useState("Loading preferences...");
 
   useEffect(() => {
@@ -73,14 +83,71 @@ export function ReviewStep() {
     addVersion(snapshot);
   };
 
+  const handleRegenerateAudioTags = async () => {
+    if (!currentScript) return;
+    setIsRegeneratingTags(true);
+    setLoading(true, "Regenerating audio tags...");
+    try {
+      const preferences = await getAggregatedPreferences();
+      const { system, user } = buildAudioTagPrompt({
+        script: currentScript,
+        draft,
+        preferences,
+      });
+
+      const raw = await generateText({
+        settings,
+        messages: [
+          { role: "system", content: system },
+          { role: "user", content: user },
+        ],
+        temperature: 0.8,
+      });
+
+      const parsed = parseAudioTaggedSegmentsJson(raw);
+      if (!parsed || parsed.length === 0) {
+        throw new Error("The AI returned an unexpected format.");
+      }
+
+      const taggedScript = {
+        ...currentScript,
+        id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 9)}`,
+        createdAt: Date.now(),
+        segments: currentScript.segments.map((segment) => {
+          const tagged = parsed.find((p) => p.type === segment.type && p.text);
+          return {
+            ...segment,
+            text: tagged ? tagged.text.trim() : segment.text,
+          };
+        }),
+      };
+
+      setCurrentScript(taggedScript);
+      addVersion(taggedScript);
+      toast.success("Audio tags regenerated");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Audio tag regeneration failed";
+      toast.error(message);
+    } finally {
+      setIsRegeneratingTags(false);
+      setLoading(false);
+    }
+  };
+
+  const handleToggleAudioTags = (enabled: boolean) => {
+    setAudioTagsEnabled(enabled);
+  };
+
   const totals = useMemo(() => {
     if (!currentScript) return { words: 0, chars: 0 };
-    const text = currentScript.segments.map((s) => s.text).join(" ");
+    const text = currentScript.segments
+      .map((s) => (audioTagsEnabled ? s.text : stripAudioTags(s.text)))
+      .join(" ");
     return {
       words: countWords(text),
       chars: text.length,
     };
-  }, [currentScript]);
+  }, [currentScript, audioTagsEnabled]);
 
   if (!currentScript) {
     return (
@@ -110,6 +177,32 @@ export function ReviewStep() {
             <FileText className="h-3.5 w-3.5" />
             {totals.words} words · {totals.chars} chars
           </Badge>
+          <div className="flex items-center gap-2 rounded-lg border bg-card px-3 py-1.5">
+            <Volume2 className="h-3.5 w-3.5 text-muted-foreground" />
+            <span className="text-xs font-medium">Audio tags</span>
+            <Switch
+              checked={audioTagsEnabled}
+              onCheckedChange={handleToggleAudioTags}
+              size="sm"
+              aria-label="Toggle audio tags"
+            />
+          </div>
+          {audioTagsEnabled && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleRegenerateAudioTags}
+              disabled={isRegeneratingTags}
+              className="gap-2"
+            >
+              {isRegeneratingTags ? (
+                <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <RefreshCw className="h-3.5 w-3.5" />
+              )}
+              Regenerate audio tags
+            </Button>
+          )}
           <Button variant="outline" size="sm" onClick={handleSaveSnapshot} className="gap-2">
             <Save className="h-4 w-4" />
             Save snapshot
@@ -135,6 +228,7 @@ export function ReviewStep() {
               segment={segment}
               script={currentScript}
               onSelectText={handleSelectText}
+              audioTagsEnabled={audioTagsEnabled}
             />
           ))}
         </div>
