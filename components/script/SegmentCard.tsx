@@ -313,6 +313,17 @@ export function SegmentCard({ segment, script, onSelectText, audioTagsEnabled = 
       const before = segment.text;
       updateSegmentText(segment.id, newText);
 
+      const newScript = {
+        ...script,
+        id: generateId(),
+        createdAt: Date.now(),
+        segments: script.segments.map((s) =>
+          s.id === segment.id ? { ...s, text: newText } : s
+        ),
+      };
+      setCurrentScript(newScript);
+      addVersion(newScript);
+
       await addFeedbackLog({
         scriptId: script.id,
         sessionId: generateId(),
@@ -569,10 +580,10 @@ export function SegmentCard({ segment, script, onSelectText, audioTagsEnabled = 
             <>
               <Popover>
                 <PopoverTrigger
-                  className="flex items-center rounded-full p-1 hover:bg-muted"
+                  className="group flex items-center rounded-full p-1 transition-colors hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   aria-label={`Changed in ${historyCount} previous version${historyCount === 1 ? "" : "s"}`}
                 >
-                  <span className="block h-2 w-2 rounded-full bg-primary" />
+                  <span className="block h-2.5 w-2.5 rounded-full bg-primary transition-all group-hover:scale-125 group-hover:ring-2 group-hover:ring-primary/40" />
                 </PopoverTrigger>
                 <PopoverContent className="w-80" side="top" align="start">
                   <PopoverHeader>
