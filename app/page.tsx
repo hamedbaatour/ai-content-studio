@@ -2,6 +2,7 @@
 
 import { useAppStore } from "@/stores/app-store";
 import { ClientOnly } from "@/components/ClientOnly";
+import { AppHeader } from "@/components/AppHeader";
 import { InputStep } from "@/components/steps/InputStep";
 import { ReviewStep } from "@/components/steps/ReviewStep";
 import { ExportStep } from "@/components/steps/ExportStep";
@@ -20,12 +21,15 @@ function StepRenderer() {
 
 export default function Home() {
   return (
-    <main className="flex-1 px-4 py-8 sm:px-6 lg:px-8">
-      <div className="mx-auto max-w-7xl">
-        <ClientOnly>
-          <StepRenderer />
-        </ClientOnly>
-      </div>
-    </main>
+    <>
+      <AppHeader />
+      <main className="flex-1 px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
+        <div className="mx-auto max-w-7xl">
+          <ClientOnly>
+            <StepRenderer />
+          </ClientOnly>
+        </div>
+      </main>
+    </>
   );
 }

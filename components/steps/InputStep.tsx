@@ -12,7 +12,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ProviderSettings } from "@/components/providers/ProviderSettings";
 import { Progress } from "@/components/ui/progress";
 import { generateText } from "@/lib/ai/providers";
 import { buildGenerationPrompt, parseScriptJson } from "@/lib/ai/prompts";
@@ -147,14 +146,11 @@ export function InputStep() {
 
   return (
     <div className="mx-auto w-full max-w-3xl space-y-8">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">AI Content Studio</h1>
-          <p className="text-sm text-muted-foreground sm:text-base">
-            Describe your feature and let the AI draft scroll-stopping content.
-          </p>
-        </div>
-        <ProviderSettings />
+      <div>
+        <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">AI Content Studio</h1>
+        <p className="text-sm text-muted-foreground sm:text-base">
+          Describe your feature and let the AI draft scroll-stopping content.
+        </p>
       </div>
 
       <div className="mb-2 flex items-center justify-between text-xs text-muted-foreground">
