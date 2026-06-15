@@ -75,6 +75,7 @@ export function GlobalControls() {
           id: `${generateId()}-${idx}`,
           type: seg.type,
           text: seg.text,
+          visualPrompt: "",
         })),
         createdAt: Date.now(),
         provider: settings.provider,

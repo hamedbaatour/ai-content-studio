@@ -13,6 +13,7 @@ export interface ScriptSegment {
   id: string;
   type: SegmentType;
   text: string;
+  visualPrompt: string;
 }
 
 export interface Script {

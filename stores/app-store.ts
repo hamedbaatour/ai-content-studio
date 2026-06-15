@@ -54,6 +54,7 @@ interface Actions {
     value: AppState["ui"][K]
   ) => void;
   updateSegmentText: (segmentId: string, text: string) => void;
+  updateSegmentVisualPrompt: (segmentId: string, visualPrompt: string) => void;
   resetDraft: () => void;
 }
 
@@ -113,6 +114,15 @@ export const useAppStore = create<AppState & Actions>()(
                 (s) => s.id === segmentId
               );
               if (segment) segment.text = text;
+            }
+          }),
+        updateSegmentVisualPrompt: (segmentId, visualPrompt) =>
+          set((state) => {
+            if (state.currentScript) {
+              const segment = state.currentScript.segments.find(
+                (s) => s.id === segmentId
+              );
+              if (segment) segment.visualPrompt = visualPrompt;
             }
           }),
         resetDraft: () =>

@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from "react";
 import { useAppStore } from "@/stores/app-store";
+import { cn } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -26,6 +27,7 @@ import { generateText } from "@/lib/ai/providers";
 import {
   buildRefinementPrompt,
   buildSegmentVariationsPrompt,
+  buildVisualPrompt,
   instructionFromActionType,
   parseVariationsJson,
 } from "@/lib/ai/prompts";
@@ -48,6 +50,15 @@ import {
   Copy,
   X,
   History,
+  Image,
+  Video,
+  Type,
+  Film,
+  MousePointer,
+  MonitorPlay,
+  Clapperboard,
+  Focus,
+  ChevronDown,
 } from "lucide-react";
 import { SegmentThoughtInput } from "./SegmentThoughtInput";
 import { toast } from "sonner";
@@ -81,6 +92,17 @@ const SEGMENT_LABELS: Record<ScriptSegment["type"], string> = {
   objection: "Objection",
   cta: "Call to Action",
 };
+
+const VISUAL_PROMPT_STYLES: { label: string; icon: React.ReactNode }[] = [
+  { label: "Another concept", icon: <Sparkles className="h-3 w-3" /> },
+  { label: "Faceless asset", icon: <Image className="h-3 w-3" /> },
+  { label: "Text graphic", icon: <Type className="h-3 w-3" /> },
+  { label: "Cinematic action", icon: <Film className="h-3 w-3" /> },
+  { label: "Pointing at screen", icon: <MousePointer className="h-3 w-3" /> },
+  { label: "Screen recording", icon: <MonitorPlay className="h-3 w-3" /> },
+  { label: "B-roll", icon: <Clapperboard className="h-3 w-3" /> },
+  { label: "Close-up product", icon: <Focus className="h-3 w-3" /> },
+];
 
 function generateId(): string {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 9)}`;
@@ -217,6 +239,7 @@ export function SegmentCard({ segment, script, onSelectText }: SegmentCardProps)
   const settings = useAppStore((s) => s.settings);
   const draft = useAppStore((s) => s.draft);
   const updateSegmentText = useAppStore((s) => s.updateSegmentText);
+  const updateSegmentVisualPrompt = useAppStore((s) => s.updateSegmentVisualPrompt);
   const setCurrentScript = useAppStore((s) => s.setCurrentScript);
   const addVersion = useAppStore((s) => s.addVersion);
   const versions = useAppStore((s) => s.versions);
@@ -226,6 +249,8 @@ export function SegmentCard({ segment, script, onSelectText }: SegmentCardProps)
   const [loadingLabel, setLoadingLabel] = useState("");
   const [variations, setVariations] = useState<{ label: string; text: string }[] | null>(null);
   const [historyDialogOpen, setHistoryDialogOpen] = useState(false);
+  const [isVisualOpen, setIsVisualOpen] = useState(false);
+  const [isGeneratingVisual, setIsGeneratingVisual] = useState(false);
 
   const segmentHistory = useMemo(() => {
     return versions
@@ -393,6 +418,57 @@ export function SegmentCard({ segment, script, onSelectText }: SegmentCardProps)
     updateSegmentText(segment.id, value);
   };
 
+  const handleVisualPromptChange = (value: string) => {
+    updateSegmentVisualPrompt(segment.id, value);
+  };
+
+  const generateVisualPrompt = async (style: string) => {
+    setIsGeneratingVisual(true);
+    try {
+      const { system, user } = buildVisualPrompt({
+        segment,
+        allSegments: script.segments,
+        style,
+        draft,
+      });
+
+      const raw = await generateText({
+        settings,
+        messages: [
+          { role: "system", content: system },
+          { role: "user", content: user },
+        ],
+        temperature: 0.8,
+      });
+
+      const newVisualPrompt = raw.replace(/^["']|["']$/g, "").trim();
+      if (!newVisualPrompt) throw new Error("AI returned empty visual prompt");
+
+      updateSegmentVisualPrompt(segment.id, newVisualPrompt);
+
+      await addFeedbackLog({
+        scriptId: script.id,
+        sessionId: generateId(),
+        provider: settings.provider,
+        model: settings.model,
+        segmentType: segment.type,
+        segmentId: segment.id,
+        actionType: "refinement:custom",
+        instruction: `Generate visual prompt: ${style}`,
+        before: segment.visualPrompt,
+        after: newVisualPrompt,
+        metadata: { tone: draft.tone, style: draft.style, length: draft.length },
+      });
+
+      toast.success("Visual prompt updated");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Visual prompt failed";
+      toast.error(message);
+    } finally {
+      setIsGeneratingVisual(false);
+    }
+  };
+
   const handleMouseUp = useCallback(() => {
     const selection = window.getSelection();
     if (!selection || selection.isCollapsed) return;
@@ -535,6 +611,59 @@ export function SegmentCard({ segment, script, onSelectText }: SegmentCardProps)
           spellCheck={false}
         />
       </CardContent>
+
+      <div className="border-t bg-muted/20">
+        <div className="flex items-center px-4 py-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 gap-1.5 px-2 text-xs"
+            onClick={() => setIsVisualOpen((v) => !v)}
+            disabled={isGeneratingVisual}
+          >
+            <Video className="h-3.5 w-3.5" />
+            {isVisualOpen ? "Close visual prompt" : "Visual prompt"}
+            <ChevronDown
+              className={cn(
+                "h-3 w-3 transition-transform",
+                isVisualOpen && "rotate-180"
+              )}
+            />
+          </Button>
+        </div>
+
+        {isVisualOpen && (
+          <div className="space-y-3 border-t px-4 py-3">
+            <Textarea
+              placeholder="Describe what appears on screen for this segment..."
+              value={segment.visualPrompt}
+              onChange={(e) => handleVisualPromptChange(e.target.value)}
+              rows={2}
+              disabled={isGeneratingVisual}
+              className="min-h-[80px] resize-y text-sm"
+            />
+            <div className="flex flex-wrap gap-1.5">
+              {VISUAL_PROMPT_STYLES.map((style) => (
+                <Button
+                  key={style.label}
+                  variant="outline"
+                  size="xs"
+                  className="gap-1"
+                  disabled={isGeneratingVisual}
+                  onClick={() => generateVisualPrompt(style.label)}
+                >
+                  {isGeneratingVisual ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    style.icon
+                  )}
+                  {style.label}
+                </Button>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
 
       {variations && (
         <div className="border-t bg-muted/30 px-4 py-3">

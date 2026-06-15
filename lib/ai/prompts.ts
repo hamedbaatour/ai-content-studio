@@ -298,7 +298,49 @@ export function instructionFromActionType(actionType: FeedbackActionType): strin
   }
 }
 
-export function parseScriptJson(raw: string): { title: string; segments: { type: SegmentType; text: string }[] } | null {
+export interface VisualPromptInput {
+  segment: ScriptSegment;
+  allSegments: ScriptSegment[];
+  style: string;
+  draft: Draft;
+}
+
+export function buildVisualPrompt(input: VisualPromptInput) {
+  const { segment, allSegments, style, draft } = input;
+
+  const system = `You are a concise visual director for short-form social media content.
+Your job is to write a single, short visual prompt (1-2 sentences) that describes what appears on screen while the narrator reads a specific script segment.
+
+Rules:
+- Keep it short, specific, and easy to shoot or source.
+- Match the visual style the user selected.
+- Do not describe dialogue or narration.
+- Do not use markdown, labels, JSON, or extra commentary.
+- Return only the visual prompt text.`;
+
+  const fullScriptContext = allSegments
+    .map((s) => `[${SEGMENT_LABELS[s.type]}]: ${s.text}`)
+    .join("\n\n");
+
+  const user = `Full script for context:
+
+${fullScriptContext}
+
+---
+
+Segment: [${SEGMENT_LABELS[segment.type]}]: ${segment.text}
+
+Visual style: ${style}
+
+Tone: ${TONE_LABELS[draft.tone]}
+Style: ${STYLE_LABELS[draft.style]}
+
+Write a 1-2 sentence visual prompt for this segment in the "${style}" style. Return only the visual prompt text.`;
+
+  return { system, user };
+}
+
+export function parseScriptJson(raw: string): { title: string; segments: { type: SegmentType; text: string; visualPrompt: string }[] } | null {
   try {
     // Try to extract JSON if wrapped in markdown
     const jsonMatch = raw.match(/\{[\s\S]*\}/);
@@ -309,9 +351,10 @@ export function parseScriptJson(raw: string): { title: string; segments: { type:
         title: parsed.title || "Untitled Script",
         segments: parsed.segments
           .filter((s: { type?: string; text?: string }) => s.type && s.text)
-          .map((s: { type: string; text: string }) => ({
+          .map((s: { type: string; text: string; visualPrompt?: string }) => ({
             type: s.type as SegmentType,
             text: s.text.trim(),
+            visualPrompt: (s.visualPrompt ?? "").trim(),
           })),
       };
     }

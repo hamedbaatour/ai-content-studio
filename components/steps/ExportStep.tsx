@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
+import { Label } from "@/components/ui/label";
 import { ArrowLeft, RotateCcw, Copy, Download, Check } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -14,6 +15,7 @@ export function ExportStep() {
   const setStep = useAppStore((s) => s.setStep);
   const resetDraft = useAppStore((s) => s.resetDraft);
   const [copied, setCopied] = useState(false);
+  const [includeVisualPrompts, setIncludeVisualPrompts] = useState(false);
 
   if (!currentScript) {
     return (
@@ -26,9 +28,16 @@ export function ExportStep() {
     );
   }
 
-  const fullScript = currentScript.segments.map((s) => s.text).join("\n\n");
+  const formatSegment = (text: string, visualPrompt?: string) => {
+    if (!includeVisualPrompts || !visualPrompt?.trim()) return text;
+    return `${text}\n\n[visual:] ${visualPrompt.trim()} [/visual]`;
+  };
+
+  const fullScript = currentScript.segments
+    .map((s) => formatSegment(s.text, s.visualPrompt))
+    .join("\n\n");
   const markdown = `# ${currentScript.title}\n\n${currentScript.segments
-    .map((s) => `## ${s.type.toUpperCase()}\n\n${s.text}`)
+    .map((s) => `## ${s.type.toUpperCase()}\n\n${formatSegment(s.text, s.visualPrompt)}`)
     .join("\n\n")}`;
 
   const handleCopy = async () => {
@@ -86,7 +95,17 @@ export function ExportStep() {
               {currentScript.segments.length} segments · {fullScript.split(/\s+/).length} words
             </p>
           </div>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <Label className="flex cursor-pointer items-center gap-2 text-xs font-normal">
+              <input
+                type="checkbox"
+                className="h-4 w-4 rounded border-border text-primary focus:ring-primary"
+                checked={includeVisualPrompts}
+                onChange={(e) => setIncludeVisualPrompts(e.target.checked)}
+              />
+              Include visual prompts
+            </Label>
+            <div className="hidden h-4 w-px bg-border sm:block" />
             <Button
               variant="outline"
               size="sm"
