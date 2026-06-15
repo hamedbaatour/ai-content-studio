@@ -76,6 +76,8 @@ export type FeedbackActionType =
   | "refinement:less_cheesy"
   | "refinement:more_human"
   | "refinement:more_hypey"
+  | "refinement:grammar"
+  | "refinement:less_salesy"
   | "refinement:dont_like"
   | "refinement:custom"
   | "selection:suggestions"

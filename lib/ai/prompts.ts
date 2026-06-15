@@ -337,6 +337,10 @@ export function instructionFromActionType(actionType: FeedbackActionType): strin
       return "Make this segment sound more human, natural, and conversational, like a real person talking.";
     case "refinement:more_hypey":
       return "Make this segment more hypey, energetic, and exciting without being cringe.";
+    case "refinement:grammar":
+      return "Correct only grammar, spelling, and punctuation in this segment. Do NOT change word choice, tone, ideas, or meaning. Preserve all audio tags and the exact flow of the segment.";
+    case "refinement:less_salesy":
+      return "Rewrite this segment to sound less pushy, less salesy, and less hype-driven while keeping the core message and value proposition intact.";
     case "refinement:dont_like":
       return "Rewrite this segment completely. The current version is not working. Try a fresh, stronger angle.";
     default:
@@ -543,6 +547,44 @@ Return ONLY a JSON object with this structure:
   "segments": [
     { "type": "hook", "text": "[EXCITED] ..." },
     ...
+  ]
+}`;
+
+  return { system, user };
+}
+
+export interface SegmentAudioTagPromptInput {
+  segment: ScriptSegment;
+  draft: Draft;
+  preferences: AggregatedPreferences | null;
+}
+
+export function buildSegmentAudioTagPrompt(input: SegmentAudioTagPromptInput) {
+  const { segment, draft, preferences } = input;
+
+  const system = `You are an expert voiceover director for short-form social media videos.
+Your job is to insert audio delivery tags into a SINGLE segment of an existing script.
+Only use tags from this exact list: ${ALL_AUDIO_TAGS.map((t) => `[${t}]`).join(", ")}.
+
+Rules:
+- Place tags inline, right before the words they affect.
+- Do NOT change the words, ideas, or meaning of the segment. Only add, remove, or reposition tags.
+- Preserve the segment's exact wording and sentence structure.
+- Match the requested tone (${TONE_LABELS[draft.tone]}) and style (${STYLE_LABELS[draft.style]}).
+- Tags should feel natural for a spoken voiceover, not random or excessive.
+- Respond with a JSON object only, preserving the original segment type and order.`;
+
+  const user = `Segment to tag:
+{ "type": "${segment.type}", "text": ${JSON.stringify(stripAudioTags(segment.text))} }
+
+Tone: ${TONE_LABELS[draft.tone]}
+Style: ${STYLE_LABELS[draft.style]}
+${buildPersonalizationNote(preferences)}
+
+Return ONLY a JSON object with this structure:
+{
+  "segments": [
+    { "type": "${segment.type}", "text": "[TAG] ..." }
   ]
 }`;
 

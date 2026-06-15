@@ -130,6 +130,10 @@ function labelFromActionType(actionType: FeedbackActionType): string | null {
       return "more human";
     case "refinement:more_hypey":
       return "more hypey";
+    case "refinement:grammar":
+      return "correct grammar";
+    case "refinement:less_salesy":
+      return "less salesy";
     case "refinement:dont_like":
       return "rewrite";
     case "refinement:custom":

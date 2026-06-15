@@ -26,9 +26,11 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { generateText } from "@/lib/ai/providers";
 import {
   buildRefinementPrompt,
+  buildSegmentAudioTagPrompt,
   buildSegmentVariationsPrompt,
   buildVisualPrompt,
   instructionFromActionType,
+  parseAudioTaggedSegmentsJson,
   parseVariationsJson,
   stripAudioTags,
 } from "@/lib/ai/prompts";
@@ -60,6 +62,9 @@ import {
   Clapperboard,
   Focus,
   ChevronDown,
+  Check,
+  TrendingDown,
+  Volume2,
 } from "lucide-react";
 import { SegmentThoughtInput } from "./SegmentThoughtInput";
 import { toast } from "sonner";
@@ -82,6 +87,8 @@ const QUICK_ACTIONS: {
   { action: "refinement:less_cheesy", label: "Less cheesy", icon: <Laugh className="h-3.5 w-3.5" /> },
   { action: "refinement:more_human", label: "More human", icon: <Smile className="h-3.5 w-3.5" /> },
   { action: "refinement:more_hypey", label: "More hypey", icon: <Rocket className="h-3.5 w-3.5" /> },
+  { action: "refinement:grammar", label: "Correct grammar", icon: <Check className="h-3.5 w-3.5" /> },
+  { action: "refinement:less_salesy", label: "Less salesy", icon: <TrendingDown className="h-3.5 w-3.5" /> },
   { action: "refinement:dont_like", label: "Don’t like this", icon: <ThumbsDown className="h-3.5 w-3.5" /> },
 ];
 
@@ -477,6 +484,65 @@ export function SegmentCard({ segment, script, onSelectText, audioTagsEnabled = 
     }
   };
 
+  const regenerateSegmentAudioTags = async () => {
+    if (!audioTagsEnabled) return;
+    setIsLoading(true);
+    setLoadingLabel("Regenerating audio tags...");
+    try {
+      const preferences = await getAggregatedPreferences();
+      const { system, user } = buildSegmentAudioTagPrompt({
+        segment,
+        draft,
+        preferences,
+      });
+
+      const raw = await generateText({
+        settings,
+        messages: [
+          { role: "system", content: system },
+          { role: "user", content: user },
+        ],
+        temperature: 0.8,
+      });
+
+      const parsed = parseAudioTaggedSegmentsJson(raw);
+      if (!parsed || parsed.length === 0) {
+        throw new Error("The AI returned an unexpected format.");
+      }
+
+      const tagged = parsed.find((p) => p.type === segment.type && p.text);
+      if (!tagged) throw new Error("No matching segment returned.");
+
+      const newText = tagged.text.trim();
+      if (!newText) throw new Error("AI returned empty text");
+
+      const before = segment.text;
+      updateSegmentText(segment.id, newText);
+
+      await addFeedbackLog({
+        scriptId: script.id,
+        sessionId: generateId(),
+        provider: settings.provider,
+        model: settings.model,
+        segmentType: segment.type,
+        segmentId: segment.id,
+        actionType: "refinement:custom",
+        instruction: "Regenerate audio tags for this segment",
+        before,
+        after: newText,
+        metadata: { tone: draft.tone, style: draft.style, length: draft.length },
+      });
+
+      toast.success("Audio tags regenerated");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Audio tag regeneration failed";
+      toast.error(message);
+    } finally {
+      setIsLoading(false);
+      setLoadingLabel("");
+    }
+  };
+
   const handleMouseUp = useCallback(() => {
     const selection = window.getSelection();
     if (!selection || selection.isCollapsed) return;
@@ -596,6 +662,22 @@ export function SegmentCard({ segment, script, onSelectText, audioTagsEnabled = 
               {qa.label}
             </Button>
           ))}
+          {audioTagsEnabled && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 gap-1 px-2 text-xs"
+              onClick={regenerateSegmentAudioTags}
+              disabled={isLoading}
+            >
+              {isLoading && loadingLabel.includes("audio tags") ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Volume2 className="h-3.5 w-3.5" />
+              )}
+              Regenerate audio tags
+            </Button>
+          )}
         </div>
       </CardHeader>
 
