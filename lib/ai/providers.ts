@@ -73,7 +73,7 @@ async function generateWithGroq(options: GenerateOptions): Promise<string> {
       Authorization: `Bearer ${settings.groqApiKey}`,
     },
     body: JSON.stringify({
-      model: settings.model || "llama3-8b-8192",
+      model: settings.model || "llama-3.1-8b-instant",
       messages,
       temperature,
     }),
@@ -138,10 +138,14 @@ export function getProviderModels(provider: AIProvider): { value: string; label:
       ];
     case "groq":
       return [
-        { value: "llama3-8b-8192", label: "Llama 3 8B" },
-        { value: "llama3-70b-8192", label: "Llama 3 70B" },
+        { value: "llama-3.3-70b-versatile", label: "Llama 3.3 70B" },
+        { value: "llama-3.3-70b-specdec", label: "Llama 3.3 70B SpecDec" },
+        { value: "llama-3.1-70b-versatile", label: "Llama 3.1 70B" },
+        { value: "llama-3.1-8b-instant", label: "Llama 3.1 8B" },
+        { value: "llama-3.2-3b-preview", label: "Llama 3.2 3B" },
         { value: "mixtral-8x7b-32768", label: "Mixtral 8x7B" },
-        { value: "gemma2-9b-it", label: "Gemma 2 9B" },
+        { value: "qwen-2.5-32b", label: "Qwen 2.5 32B" },
+        { value: "qwen-2.5-coder-32b", label: "Qwen 2.5 Coder 32B" },
         { value: "deepseek-r1-distill-llama-70b", label: "DeepSeek R1 Distill" },
       ];
     case "gemini":

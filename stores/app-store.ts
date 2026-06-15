@@ -126,13 +126,16 @@ export const useAppStore = create<AppState & Actions>()(
       }),
       {
         name: "content-studio-store",
-        version: 2,
+        version: 3,
         partialize: (state) => ({
           draft: state.draft,
           settings: state.settings,
         }),
         migrate: (persistedState: unknown, version: number) => {
-          const state = persistedState as { draft?: { length?: number; featureDescription?: string; usefulness?: string; brainDump?: string } };
+          const state = persistedState as {
+            draft?: { length?: number; featureDescription?: string; usefulness?: string; brainDump?: string };
+            settings?: { provider?: string; model?: string };
+          };
 
           if (version < 1) {
             if (state?.draft?.length && state.draft.length <= 5) {
@@ -158,6 +161,18 @@ export const useAppStore = create<AppState & Actions>()(
               state.draft.brainDump = parts.join("\n\n");
               delete (state.draft as { featureDescription?: string }).featureDescription;
               delete (state.draft as { usefulness?: string }).usefulness;
+            }
+          }
+
+          if (version < 3) {
+            // Replace deprecated Groq models
+            const groqModelMapping: Record<string, string> = {
+              "llama3-8b-8192": "llama-3.1-8b-instant",
+              "llama3-70b-8192": "llama-3.3-70b-versatile",
+              "gemma2-9b-it": "llama-3.1-8b-instant",
+            };
+            if (state?.settings?.provider === "groq" && state.settings.model && groqModelMapping[state.settings.model]) {
+              state.settings.model = groqModelMapping[state.settings.model];
             }
           }
 
