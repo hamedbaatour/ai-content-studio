@@ -9,8 +9,13 @@ import { buildThoughtIntegrationPrompt } from "@/lib/ai/prompts";
 import { addFeedbackLog } from "@/lib/db/feedback-db";
 import { getAggregatedPreferences } from "@/lib/personalization";
 import type { ScriptSegment, Script } from "@/lib/types";
-import { Lightbulb, Loader2, Send } from "lucide-react";
+import { Lightbulb, Loader2, Send, X } from "lucide-react";
 import { toast } from "sonner";
+import {
+  Popover,
+  PopoverTrigger,
+  PopoverContent,
+} from "@/components/ui/popover";
 
 interface SegmentThoughtInputProps {
   segment: ScriptSegment;
@@ -28,7 +33,7 @@ export function SegmentThoughtInput({ segment, script, audioTagsEnabled = true }
   const setCurrentScript = useAppStore((s) => s.setCurrentScript);
   const addVersion = useAppStore((s) => s.addVersion);
 
-  const [isOpen, setIsOpen] = useState(false);
+  const [open, setOpen] = useState(false);
   const [thought, setThought] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
@@ -91,7 +96,7 @@ export function SegmentThoughtInput({ segment, script, audioTagsEnabled = true }
       });
 
       setThought("");
-      setIsOpen(false);
+      setOpen(false);
       toast.success("Thought integrated");
     } catch (err) {
       const message = err instanceof Error ? err.message : "Integration failed";
@@ -102,27 +107,27 @@ export function SegmentThoughtInput({ segment, script, audioTagsEnabled = true }
   };
 
   return (
-    <div className="border-t bg-muted/20">
-      <div className="flex items-center px-4 py-2">
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-7 gap-1.5 px-2 text-xs"
-          onClick={() => setIsOpen((v) => !v)}
-          disabled={isLoading}
-        >
-          <Lightbulb className="h-3.5 w-3.5" />
-          {isOpen ? "Close thought" : "Add thought"}
-        </Button>
-      </div>
-
-      {isOpen && (
-        <div className="space-y-2 border-t px-4 py-3">
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger
+        className="inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-xs font-medium transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        aria-label="Add a thought"
+      >
+        <Lightbulb className="h-3.5 w-3.5" />
+        Add thought
+      </PopoverTrigger>
+      <PopoverContent className="w-80 sm:w-96" align="end" side="top">
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium">Add a thought</span>
+            <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setOpen(false)}>
+              <X className="h-3.5 w-3.5" />
+            </Button>
+          </div>
           <Textarea
             placeholder="e.g. I want to mention that it works offline without sounding defensive..."
             value={thought}
             onChange={(e) => setThought(e.target.value)}
-            rows={2}
+            rows={3}
             disabled={isLoading}
             className="min-h-[80px] resize-y text-sm"
           />
@@ -142,7 +147,7 @@ export function SegmentThoughtInput({ segment, script, audioTagsEnabled = true }
             </Button>
           </div>
         </div>
-      )}
-    </div>
+      </PopoverContent>
+    </Popover>
   );
 }

@@ -20,7 +20,7 @@ import { getAggregatedPreferences } from "@/lib/personalization";
 import type { ContentType, Script, Tone, Style } from "@/lib/types";
 import { Sparkles, Wand2, Volume2 } from "lucide-react";
 import { toast } from "sonner";
-import { useMemo, useEffect } from "react";
+import { useMemo, useEffect, useCallback } from "react";
 import { Switch } from "@/components/ui/switch";
 
 const CONTENT_TYPES: { value: ContentType; label: string }[] = [
@@ -50,6 +50,10 @@ function generateId(): string {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
+function generateScriptSnapshotId(): { id: string; createdAt: number } {
+  return { id: generateId(), createdAt: Date.now() };
+}
+
 export function InputStep() {
   const draft = useAppStore((s) => s.draft);
   const settings = useAppStore((s) => s.settings);
@@ -69,7 +73,7 @@ export function InputStep() {
     [draft.brainDump]
   );
 
-  const handleGenerate = async () => {
+  const handleGenerate = useCallback(async () => {
     if (!isReady) {
       toast.error("Please write a bit more about your idea.");
       return;
@@ -96,15 +100,14 @@ export function InputStep() {
       }
 
       const script: Script = {
-        id: generateId(),
+        ...generateScriptSnapshotId(),
         title: parsed.title,
         segments: parsed.segments.map((seg, idx) => ({
           id: `${generateId()}-${idx}`,
           type: seg.type,
           text: seg.text,
-          visualPrompt: "",
+          visualPrompt: seg.visualPrompt || "",
         })),
-        createdAt: Date.now(),
         provider: settings.provider,
         model: settings.model,
       };
@@ -135,7 +138,7 @@ export function InputStep() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [addVersion, audioTagsEnabled, draft, isReady, setCurrentScript, setError, setLoading, setStep, settings]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -146,7 +149,7 @@ export function InputStep() {
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isReady, isLoading]);
+  }, [isReady, isLoading, handleGenerate]);
 
   return (
     <div className="mx-auto w-full max-w-3xl space-y-8">

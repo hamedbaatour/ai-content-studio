@@ -25,6 +25,13 @@ export interface Script {
   model: string;
 }
 
+export interface Note {
+  id: string;
+  text: string;
+  segmentId?: string;
+  createdAt: number;
+}
+
 export type ContentType =
   | "tiktok"
   | "instagram-reels"
@@ -110,6 +117,9 @@ export interface AppState {
   loadingMessage: string;
   error: string | null;
   audioTagsEnabled: boolean;
+  showVisualPrompts: boolean;
+  notes: Note[];
+  audioTagVariationHistory: Record<string, string[]>;
   ui: {
     activeSegmentId: string | null;
     showProviderSettings: boolean;

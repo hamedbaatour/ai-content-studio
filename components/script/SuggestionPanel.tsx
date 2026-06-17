@@ -13,7 +13,7 @@ import {
 } from "@/lib/ai/prompts";
 import { addFeedbackLog } from "@/lib/db/feedback-db";
 import { getAggregatedPreferences } from "@/lib/personalization";
-import type { FeedbackActionType, ScriptSegment } from "@/lib/types";
+import type { FeedbackActionType } from "@/lib/types";
 import { X, Send, Sparkles, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -28,6 +28,10 @@ function generateId(): string {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
+function generateScriptSnapshotId(): { id: string; createdAt: number } {
+  return { id: generateId(), createdAt: Date.now() };
+}
+
 export function SuggestionPanel({
   segmentId,
   selectedText,
@@ -38,7 +42,6 @@ export function SuggestionPanel({
   const settings = useAppStore((s) => s.settings);
   const draft = useAppStore((s) => s.draft);
   const updateSegmentText = useAppStore((s) => s.updateSegmentText);
-  const setLoading = useAppStore((s) => s.setLoading);
   const addVersion = useAppStore((s) => s.addVersion);
   const setCurrentScript = useAppStore((s) => s.setCurrentScript);
 
@@ -128,8 +131,7 @@ export function SuggestionPanel({
     // Create a new version to capture the change
     const newScript = {
       ...script,
-      id: generateId(),
-      createdAt: Date.now(),
+      ...generateScriptSnapshotId(),
       segments: script.segments.map((s) =>
         s.id === segment.id ? { ...s, text: newText } : s
       ),
@@ -199,7 +201,8 @@ export function SuggestionPanel({
       </div>
 
       <div className="mb-3 shrink-0 rounded-md bg-muted p-2 text-sm text-muted-foreground">
-        <span className="font-medium text-foreground">Selected:</span> "{selectedText}"
+        <span className="font-medium text-foreground">Selected:</span>{" "}
+        <span className="text-foreground">&ldquo;{selectedText}&rdquo;</span>
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto pr-1">

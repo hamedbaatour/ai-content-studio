@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef, useCallback } from "react";
 import { useAppStore } from "@/stores/app-store";
 import { cn } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardFooter } from "@/components/ui/card";
@@ -33,6 +33,7 @@ import {
   parseAudioTaggedSegmentsJson,
   parseVariationsJson,
   stripAudioTags,
+  getAudioTagSignature,
 } from "@/lib/ai/prompts";
 import { addFeedbackLog } from "@/lib/db/feedback-db";
 import { getAggregatedPreferences } from "@/lib/personalization";
@@ -53,7 +54,7 @@ import {
   Copy,
   X,
   History,
-  Image,
+  Image as ImageIcon,
   Video,
   Type,
   Film,
@@ -65,16 +66,24 @@ import {
   Check,
   TrendingDown,
   Volume2,
+  Heart,
+  Brain,
+  Zap,
+  Eye,
+  MessageCircle,
+  Flame,
+  Info,
 } from "lucide-react";
 import { SegmentThoughtInput } from "./SegmentThoughtInput";
 import { toast } from "sonner";
-import { useRef, useCallback } from "react";
 
 interface SegmentCardProps {
   segment: ScriptSegment;
   script: Script;
   onSelectText: (segmentId: string, rect: DOMRect, text: string) => void;
   audioTagsEnabled?: boolean;
+  showVisualPrompts?: boolean;
+  timelineEnd?: string;
 }
 
 const QUICK_ACTIONS: {
@@ -104,7 +113,7 @@ const SEGMENT_LABELS: Record<ScriptSegment["type"], string> = {
 
 const VISUAL_PROMPT_STYLES: { label: string; icon: React.ReactNode }[] = [
   { label: "Another concept", icon: <Sparkles className="h-3 w-3" /> },
-  { label: "Faceless asset", icon: <Image className="h-3 w-3" /> },
+  { label: "Faceless asset", icon: <ImageIcon className="h-3 w-3" /> },
   { label: "Text graphic", icon: <Type className="h-3 w-3" /> },
   { label: "Cinematic action", icon: <Film className="h-3 w-3" /> },
   { label: "Pointing at screen", icon: <MousePointer className="h-3 w-3" /> },
@@ -113,8 +122,34 @@ const VISUAL_PROMPT_STYLES: { label: string; icon: React.ReactNode }[] = [
   { label: "Close-up product", icon: <Focus className="h-3 w-3" /> },
 ];
 
+const CATEGORY_ICONS: Record<string, React.ReactNode> = {
+  emotional: <Heart className="h-3.5 w-3.5" />,
+  rational: <Brain className="h-3.5 w-3.5" />,
+  curiosity: <Eye className="h-3.5 w-3.5" />,
+  urgent: <Zap className="h-3.5 w-3.5" />,
+  storytelling: <MessageCircle className="h-3.5 w-3.5" />,
+  bold: <Flame className="h-3.5 w-3.5" />,
+  intimate: <Heart className="h-3.5 w-3.5" />,
+  funny: <Laugh className="h-3.5 w-3.5" />,
+};
+
+const CATEGORY_LABELS: Record<string, string> = {
+  emotional: "Emotional",
+  rational: "Rational",
+  curiosity: "Curiosity",
+  urgent: "Urgent",
+  storytelling: "Storytelling",
+  bold: "Bold",
+  intimate: "Intimate",
+  funny: "Funny",
+};
+
 function generateId(): string {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 9)}`;
+}
+
+function generateScriptSnapshotId(): { id: string; createdAt: number } {
+  return { id: generateId(), createdAt: Date.now() };
 }
 
 function countWords(text: string): number {
@@ -202,7 +237,7 @@ function DiffView({ oldText, newText }: { oldText: string; newText: string }) {
               key={idx}
               className={
                 token.type === "remove"
-                  ? "rounded bg-red-100 px-0.5 text-red-700 line-through dark:bg-red-900/30 dark:text-red-300"
+                  ? "rounded bg-red-100 px-0.5 text-red-700 dark:bg-red-900/30 dark:text-red-300"
                   : undefined
               }
             >
@@ -244,7 +279,14 @@ function formatVersionTime(timestamp: number): string {
   });
 }
 
-export function SegmentCard({ segment, script, onSelectText, audioTagsEnabled = true }: SegmentCardProps) {
+export function SegmentCard({
+  segment,
+  script,
+  onSelectText,
+  audioTagsEnabled = true,
+  showVisualPrompts = true,
+  timelineEnd,
+}: SegmentCardProps) {
   const settings = useAppStore((s) => s.settings);
   const draft = useAppStore((s) => s.draft);
   const updateSegmentText = useAppStore((s) => s.updateSegmentText);
@@ -252,11 +294,13 @@ export function SegmentCard({ segment, script, onSelectText, audioTagsEnabled = 
   const setCurrentScript = useAppStore((s) => s.setCurrentScript);
   const addVersion = useAppStore((s) => s.addVersion);
   const versions = useAppStore((s) => s.versions);
+  const audioTagVariationHistory = useAppStore((s) => s.audioTagVariationHistory);
+  const addAudioTagVariation = useAppStore((s) => s.addAudioTagVariation);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const [isLoading, setIsLoading] = useState(false);
   const [loadingLabel, setLoadingLabel] = useState("");
-  const [variations, setVariations] = useState<{ label: string; text: string }[] | null>(null);
+  const [variations, setVariations] = useState<{ label: string; text: string; category?: string }[] | null>(null);
   const [historyDialogOpen, setHistoryDialogOpen] = useState(false);
   const [isVisualOpen, setIsVisualOpen] = useState(false);
   const [isGeneratingVisual, setIsGeneratingVisual] = useState(false);
@@ -315,8 +359,7 @@ export function SegmentCard({ segment, script, onSelectText, audioTagsEnabled = 
 
       const newScript = {
         ...script,
-        id: generateId(),
-        createdAt: Date.now(),
+        ...generateScriptSnapshotId(),
         segments: script.segments.map((s) =>
           s.id === segment.id ? { ...s, text: newText } : s
         ),
@@ -410,8 +453,7 @@ export function SegmentCard({ segment, script, onSelectText, audioTagsEnabled = 
 
     const newScript = {
       ...script,
-      id: generateId(),
-      createdAt: Date.now(),
+      ...generateScriptSnapshotId(),
       segments: script.segments.map((s) =>
         s.id === segment.id ? { ...s, text } : s
       ),
@@ -495,16 +537,18 @@ export function SegmentCard({ segment, script, onSelectText, audioTagsEnabled = 
     }
   };
 
-  const regenerateSegmentAudioTags = async () => {
+  const regenerateSegmentAudioTags = async (attempt = 0, maxAttempts = 2) => {
     if (!audioTagsEnabled) return;
     setIsLoading(true);
     setLoadingLabel("Regenerating audio tags...");
     try {
       const preferences = await getAggregatedPreferences();
+      const history = audioTagVariationHistory[segment.id] || [];
       const { system, user } = buildSegmentAudioTagPrompt({
         segment,
         draft,
         preferences,
+        previousVariations: history.slice(0, 8),
       });
 
       const raw = await generateText({
@@ -513,7 +557,7 @@ export function SegmentCard({ segment, script, onSelectText, audioTagsEnabled = 
           { role: "system", content: system },
           { role: "user", content: user },
         ],
-        temperature: 0.8,
+        temperature: 0.85,
       });
 
       const parsed = parseAudioTaggedSegmentsJson(raw);
@@ -527,8 +571,38 @@ export function SegmentCard({ segment, script, onSelectText, audioTagsEnabled = 
       const newText = tagged.text.trim();
       if (!newText) throw new Error("AI returned empty text");
 
+      const newSig = getAudioTagSignature(newText);
+      const currentSig = getAudioTagSignature(segment.text);
+      const isDuplicate =
+        newSig === currentSig ||
+        history.some((h) => getAudioTagSignature(h) === newSig);
+
+      if (isDuplicate && attempt < maxAttempts) {
+        setIsLoading(false);
+        setLoadingLabel("");
+        return regenerateSegmentAudioTags(attempt + 1, maxAttempts);
+      }
+
+      if (isDuplicate && attempt >= maxAttempts) {
+        toast.info("No new audio tag variations available for this segment.", {
+          icon: <Info className="h-4 w-4" />,
+        });
+        return;
+      }
+
       const before = segment.text;
       updateSegmentText(segment.id, newText);
+      addAudioTagVariation(segment.id, newText);
+
+      const newScript = {
+        ...script,
+        ...generateScriptSnapshotId(),
+        segments: script.segments.map((s) =>
+          s.id === segment.id ? { ...s, text: newText } : s
+        ),
+      };
+      setCurrentScript(newScript);
+      addVersion(newScript);
 
       await addFeedbackLog({
         scriptId: script.id,
@@ -569,9 +643,20 @@ export function SegmentCard({ segment, script, onSelectText, audioTagsEnabled = 
   const words = countWords(displayText);
   const chars = displayText.length;
 
+  const groupedVariations = useMemo(() => {
+    if (!variations) return null;
+    const groups: Record<string, typeof variations> = {};
+    for (const v of variations) {
+      const category = v.category || "variation";
+      if (!groups[category]) groups[category] = [];
+      groups[category].push(v);
+    }
+    return groups;
+  }, [variations]);
+
   return (
     <Card className="overflow-hidden transition-shadow hover:shadow-md">
-      <CardHeader className="flex flex-col gap-3 bg-muted/30 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-2">
+      <CardHeader className="flex flex-col gap-2 bg-muted/30 px-3 py-2 sm:flex-row sm:items-center sm:justify-between sm:gap-2">
         <div className="flex items-center gap-2">
           <Badge variant="secondary" className="font-medium">
             {SEGMENT_LABELS[segment.type]}
@@ -659,7 +744,7 @@ export function SegmentCard({ segment, script, onSelectText, audioTagsEnabled = 
             Variations
           </Button>
         </div>
-        <div className="flex flex-wrap gap-1.5">
+        <div className="flex flex-wrap gap-1">
           {QUICK_ACTIONS.map((qa) => (
             <Button
               key={qa.action}
@@ -678,7 +763,7 @@ export function SegmentCard({ segment, script, onSelectText, audioTagsEnabled = 
               variant="ghost"
               size="sm"
               className="h-7 gap-1 px-2 text-xs"
-              onClick={regenerateSegmentAudioTags}
+              onClick={() => regenerateSegmentAudioTags()}
               disabled={isLoading}
             >
               {isLoading && loadingLabel.includes("audio tags") ? (
@@ -691,8 +776,6 @@ export function SegmentCard({ segment, script, onSelectText, audioTagsEnabled = 
           )}
         </div>
       </CardHeader>
-
-      <SegmentThoughtInput segment={segment} script={script} audioTagsEnabled={audioTagsEnabled} />
 
       <CardContent className="relative p-0">
         {isLoading && (
@@ -709,66 +792,68 @@ export function SegmentCard({ segment, script, onSelectText, audioTagsEnabled = 
           onChange={(e) => handleTextChange(e.target.value)}
           onMouseUp={handleMouseUp}
           onKeyUp={handleMouseUp}
-          className="min-h-[120px] resize-y rounded-none border-0 px-4 py-4 text-base leading-relaxed focus-visible:ring-0 focus-visible:ring-offset-0"
+          className="min-h-[80px] resize-y rounded-none border-0 px-3 py-2.5 text-sm leading-relaxed focus-visible:ring-0 focus-visible:ring-offset-0"
           spellCheck={false}
         />
       </CardContent>
 
-      <div className="border-t bg-muted/20">
-        <div className="flex items-center px-4 py-2">
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-7 gap-1.5 px-2 text-xs"
-            onClick={() => setIsVisualOpen((v) => !v)}
-            disabled={isGeneratingVisual}
-          >
-            <Video className="h-3.5 w-3.5" />
-            {isVisualOpen ? "Close visual prompt" : "Visual prompt"}
-            <ChevronDown
-              className={cn(
-                "h-3 w-3 transition-transform",
-                isVisualOpen && "rotate-180"
-              )}
-            />
-          </Button>
-        </div>
-
-        {isVisualOpen && (
-          <div className="space-y-3 border-t px-4 py-3">
-            <Textarea
-              placeholder="Describe what appears on screen for this segment..."
-              value={segment.visualPrompt}
-              onChange={(e) => handleVisualPromptChange(e.target.value)}
-              rows={2}
+      {showVisualPrompts && (
+        <div className="border-t bg-muted/20">
+          <div className="flex items-center px-3 py-1.5">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 gap-1.5 px-2 text-xs"
+              onClick={() => setIsVisualOpen((v) => !v)}
               disabled={isGeneratingVisual}
-              className="min-h-[80px] resize-y text-sm"
-            />
-            <div className="flex flex-wrap gap-1.5">
-              {VISUAL_PROMPT_STYLES.map((style) => (
-                <Button
-                  key={style.label}
-                  variant="outline"
-                  size="xs"
-                  className="gap-1"
-                  disabled={isGeneratingVisual}
-                  onClick={() => generateVisualPrompt(style.label)}
-                >
-                  {isGeneratingVisual ? (
-                    <Loader2 className="h-3 w-3 animate-spin" />
-                  ) : (
-                    style.icon
-                  )}
-                  {style.label}
-                </Button>
-              ))}
-            </div>
+            >
+              <Video className="h-3.5 w-3.5" />
+              {isVisualOpen ? "Close visual prompt" : "Visual prompt"}
+              <ChevronDown
+                className={cn(
+                  "h-3 w-3 transition-transform",
+                  isVisualOpen && "rotate-180"
+                )}
+              />
+            </Button>
           </div>
-        )}
-      </div>
 
-      {variations && (
-        <div className="border-t bg-muted/30 px-4 py-3">
+          {isVisualOpen && (
+            <div className="space-y-2 border-t px-3 py-2">
+              <Textarea
+                placeholder="Describe what appears on screen for this segment..."
+                value={segment.visualPrompt}
+                onChange={(e) => handleVisualPromptChange(e.target.value)}
+                rows={2}
+                disabled={isGeneratingVisual}
+                className="min-h-[64px] resize-y text-xs"
+              />
+              <div className="flex flex-wrap gap-1.5">
+                {VISUAL_PROMPT_STYLES.map((style) => (
+                  <Button
+                    key={style.label}
+                    variant="outline"
+                    size="xs"
+                    className="h-7 gap-1 text-xs"
+                    disabled={isGeneratingVisual}
+                    onClick={() => generateVisualPrompt(style.label)}
+                  >
+                    {isGeneratingVisual ? (
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                    ) : (
+                      style.icon
+                    )}
+                    {style.label}
+                  </Button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {variations && groupedVariations && (
+        <div className="border-t bg-muted/30 px-3 py-2">
           <div className="mb-2 flex items-center justify-between">
             <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               {SEGMENT_LABELS[segment.type]} variations
@@ -778,29 +863,48 @@ export function SegmentCard({ segment, script, onSelectText, audioTagsEnabled = 
               Dismiss
             </Button>
           </div>
-          <div className="space-y-2">
-            {variations.map((variant, idx) => (
-              <Button
-                key={idx}
-                variant="outline"
-                className="h-auto w-full justify-start gap-2 whitespace-normal px-3 py-2 text-left text-sm font-normal"
-                onClick={() => applyVariation(variant.text)}
-              >
-                <Sparkles className="h-3.5 w-3.5 shrink-0 text-primary" />
-                <span className="flex-1">
-                  <span className="block text-xs font-medium text-muted-foreground">{variant.label}</span>
-                  <span>{variant.text}</span>
-                </span>
-              </Button>
+          <div className="space-y-3">
+            {Object.entries(groupedVariations).map(([category, items]) => (
+              <div key={category}>
+                <div className="mb-1 flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                  {CATEGORY_ICONS[category] || <Sparkles className="h-3.5 w-3.5" />}
+                  {CATEGORY_LABELS[category] || category}
+                </div>
+                <div className="space-y-1.5">
+                  {items.map((variant, idx) => (
+                    <Button
+                      key={`${category}-${idx}`}
+                      variant="outline"
+                      className="h-auto w-full justify-start gap-2 whitespace-normal px-3 py-2 text-left text-sm font-normal"
+                      onClick={() => applyVariation(variant.text)}
+                    >
+                      <Sparkles className="h-3.5 w-3.5 shrink-0 text-primary" />
+                      <span className="flex-1">
+                        <span className="block text-xs font-medium text-muted-foreground">{variant.label}</span>
+                        <span>{variant.text}</span>
+                      </span>
+                    </Button>
+                  ))}
+                </div>
+              </div>
             ))}
           </div>
         </div>
       )}
 
-      <CardFooter className="flex justify-end gap-3 border-t bg-muted/20 px-4 py-2 text-xs text-muted-foreground">
-        <span>{words} word{words !== 1 ? "s" : ""}</span>
-        <span>·</span>
-        <span>{chars} char{chars !== 1 ? "s" : ""}</span>
+      <CardFooter className="flex items-center justify-between gap-3 border-t bg-muted/20 px-3 py-1.5">
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <span>{words} word{words !== 1 ? "s" : ""}</span>
+          <span>·</span>
+          <span>{chars} char{chars !== 1 ? "s" : ""}</span>
+          {timelineEnd && (
+            <>
+              <span>·</span>
+              <span>ends ~{timelineEnd}</span>
+            </>
+          )}
+        </div>
+        <SegmentThoughtInput segment={segment} script={script} audioTagsEnabled={audioTagsEnabled} />
       </CardFooter>
     </Card>
   );

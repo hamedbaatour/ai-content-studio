@@ -6,7 +6,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Label } from "@/components/ui/label";
-import { ArrowLeft, RotateCcw, Copy, Download, Check } from "lucide-react";
+import { ArrowLeft, RotateCcw, Copy, Download, Check, FileX2 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -23,9 +23,16 @@ export function ExportStep() {
 
   if (!currentScript) {
     return (
-      <div className="mx-auto max-w-3xl text-center">
-        <p className="text-muted-foreground">No script to export.</p>
-        <Button onClick={() => setStep("input")} className="mt-4">
+      <div className="mx-auto flex max-w-md flex-col items-center text-center">
+        <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-muted">
+          <FileX2 className="h-8 w-8 text-muted-foreground" />
+        </div>
+        <h2 className="text-xl font-semibold tracking-tight">Nothing to export</h2>
+        <p className="mt-2 text-sm text-muted-foreground">
+          Generate a script first, then come back here to copy or download it.
+        </p>
+        <Button onClick={() => setStep("input")} className="mt-6 gap-2">
+          <RotateCcw className="h-4 w-4" />
           Start over
         </Button>
       </div>

@@ -4,6 +4,7 @@ import { immer } from "zustand/middleware/immer";
 import type {
   AppState,
   Draft,
+  Note,
   ProviderSettings,
   Script,
   Step,
@@ -25,7 +26,7 @@ const defaultSettings: ProviderSettings = {
   ollamaBaseUrl: "http://localhost:11434",
 };
 
-const initialState: Omit<AppState, "setStep" | "setDraft" | "setSettings" | "setCurrentScript" | "addVersion" | "setLoading" | "setError" | "setUiField" | "restoreVersion" | "updateSegmentText" | "updateSegmentVisualPrompt" | "resetDraft" | "setAudioTagsEnabled"> = {
+const initialState: Omit<AppState, "setStep" | "setDraft" | "setSettings" | "setCurrentScript" | "addVersion" | "setLoading" | "setError" | "setUiField" | "restoreVersion" | "updateSegmentText" | "updateSegmentVisualPrompt" | "resetDraft" | "setAudioTagsEnabled" | "setShowVisualPrompts" | "addNote" | "updateNote" | "deleteNote" | "addAudioTagVariation" | "clearAudioTagVariations"> = {
   step: "input",
   draft: defaultDraft,
   settings: defaultSettings,
@@ -35,6 +36,9 @@ const initialState: Omit<AppState, "setStep" | "setDraft" | "setSettings" | "set
   loadingMessage: "",
   error: null,
   audioTagsEnabled: true,
+  showVisualPrompts: true,
+  notes: [],
+  audioTagVariationHistory: {},
   ui: {
     activeSegmentId: null,
     showProviderSettings: false,
@@ -57,6 +61,12 @@ interface Actions {
   updateSegmentText: (segmentId: string, text: string) => void;
   updateSegmentVisualPrompt: (segmentId: string, visualPrompt: string) => void;
   setAudioTagsEnabled: (enabled: boolean) => void;
+  setShowVisualPrompts: (enabled: boolean) => void;
+  addNote: (note: Omit<Note, "id" | "createdAt">) => void;
+  updateNote: (id: string, text: string) => void;
+  deleteNote: (id: string) => void;
+  addAudioTagVariation: (segmentId: string, text: string) => void;
+  clearAudioTagVariations: (segmentId: string) => void;
   resetDraft: () => void;
 }
 
@@ -131,6 +141,39 @@ export const useAppStore = create<AppState & Actions>()(
           set((state) => {
             state.audioTagsEnabled = enabled;
           }),
+        setShowVisualPrompts: (enabled) =>
+          set((state) => {
+            state.showVisualPrompts = enabled;
+          }),
+        addNote: (note) =>
+          set((state) => {
+            state.notes.unshift({
+              id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 9)}`,
+              text: note.text.trim(),
+              segmentId: note.segmentId,
+              createdAt: Date.now(),
+            });
+          }),
+        updateNote: (id, text) =>
+          set((state) => {
+            const note = state.notes.find((n) => n.id === id);
+            if (note) note.text = text.trim();
+          }),
+        deleteNote: (id) =>
+          set((state) => {
+            state.notes = state.notes.filter((n) => n.id !== id);
+          }),
+        addAudioTagVariation: (segmentId, text) =>
+          set((state) => {
+            if (!state.audioTagVariationHistory[segmentId]) {
+              state.audioTagVariationHistory[segmentId] = [];
+            }
+            state.audioTagVariationHistory[segmentId].unshift(text);
+          }),
+        clearAudioTagVariations: (segmentId) =>
+          set((state) => {
+            delete state.audioTagVariationHistory[segmentId];
+          }),
         resetDraft: () =>
           set((state) => {
             state.draft = defaultDraft;
@@ -139,26 +182,32 @@ export const useAppStore = create<AppState & Actions>()(
             state.step = "input";
             state.error = null;
             state.audioTagsEnabled = true;
+            state.showVisualPrompts = true;
+            state.notes = [];
+            state.audioTagVariationHistory = {};
           }),
       }),
       {
         name: "content-studio-store",
-        version: 4,
+        version: 5,
         partialize: (state) => ({
           draft: state.draft,
           settings: state.settings,
           audioTagsEnabled: state.audioTagsEnabled,
+          showVisualPrompts: state.showVisualPrompts,
+          notes: state.notes,
         }),
         migrate: (persistedState: unknown, version: number) => {
           const state = persistedState as {
             draft?: { length?: number; featureDescription?: string; usefulness?: string; brainDump?: string };
             settings?: { provider?: string; model?: string };
             audioTagsEnabled?: boolean;
+            showVisualPrompts?: boolean;
+            notes?: Note[];
           };
 
           if (version < 1) {
             if (state?.draft?.length && state.draft.length <= 5) {
-              // Old abstract 1-5 scale -> map to seconds
               const mapping: Record<number, number> = {
                 1: 15,
                 2: 30,
@@ -171,7 +220,6 @@ export const useAppStore = create<AppState & Actions>()(
           }
 
           if (version < 2) {
-            // Merge old structured fields into freeform brain dump
             const feature = state?.draft?.featureDescription || "";
             const usefulness = state?.draft?.usefulness || "";
             const existingBrainDump = state?.draft?.brainDump || "";
@@ -184,7 +232,6 @@ export const useAppStore = create<AppState & Actions>()(
           }
 
           if (version < 3) {
-            // Replace deprecated Groq models
             const groqModelMapping: Record<string, string> = {
               "llama3-8b-8192": "llama-3.1-8b-instant",
               "llama3-70b-8192": "llama-3.3-70b-versatile",
@@ -196,9 +243,17 @@ export const useAppStore = create<AppState & Actions>()(
           }
 
           if (version < 4) {
-            // Audio tags feature added; default to enabled for new behavior
             if (typeof state.audioTagsEnabled !== "boolean") {
               state.audioTagsEnabled = true;
+            }
+          }
+
+          if (version < 5) {
+            if (typeof state.showVisualPrompts !== "boolean") {
+              state.showVisualPrompts = true;
+            }
+            if (!Array.isArray(state.notes)) {
+              state.notes = [];
             }
           }
 

@@ -99,15 +99,17 @@ You must respond with a single JSON object and no markdown formatting. Use this 
 {
   "title": "A short, catchy title for this piece of content",
   "segments": [
-    { "type": "hook", "text": "..." },
-    { "type": "problem", "text": "..." },
-    { "type": "solution", "text": "..." },
-    { "type": "benefit", "text": "..." },
-    { "type": "cta", "text": "..." }
+    { "type": "hook", "text": "...", "visualPrompt": "..." },
+    { "type": "problem", "text": "...", "visualPrompt": "..." },
+    { "type": "solution", "text": "...", "visualPrompt": "..." },
+    { "type": "benefit", "text": "...", "visualPrompt": "..." },
+    { "type": "cta", "text": "...", "visualPrompt": "..." }
   ]
 }
 
 Segment types you can use: hook, problem, solution, benefit, proof, objection, cta. Choose the ones that best fit the content. Include at least hook, solution, and cta.
+
+Each segment must include a "visualPrompt" field: a short 1-2 sentence description of what appears on screen while the narrator reads this segment. Keep it specific, easy to shoot or source, and avoid describing dialogue.
 `;
 }
 
@@ -340,7 +342,7 @@ export function instructionFromActionType(actionType: FeedbackActionType): strin
     case "refinement:grammar":
       return "Correct only grammar, spelling, and punctuation in this segment. Do NOT change word choice, tone, ideas, or meaning. Preserve all audio tags and the exact flow of the segment.";
     case "refinement:less_salesy":
-      return "Rewrite this segment to sound less pushy, less salesy, and less hype-driven while keeping the core message and value proposition intact.";
+      return "Rewrite this segment to remove marketing hype, aggressive calls to action, and pushy sales language. Keep the core message and value proposition intact, but make it sound helpful, honest, and conversational — like advice from a trusted friend rather than a salesperson. Avoid phrases like 'act now', 'limited time', 'don't miss out', and exaggerated claims.";
     case "refinement:dont_like":
       return "Rewrite this segment completely. The current version is not working. Try a fresh, stronger angle.";
     default:
@@ -457,6 +459,7 @@ Rules:
 - Keep them roughly the same length as the original.
 - Match the requested tone and style.
 - Do not use emojis unless they genuinely add clarity.
+- The segment text may contain spaces, punctuation, and special characters. Return the text exactly as a JSON string with proper escaping.
 ${buildAudioTagPreservationNote(audioTagsEnabled)}
 ${buildPersonalizationNote(preferences)}`;
 
@@ -476,19 +479,28 @@ Tone: ${TONE_LABELS[draft.tone]}
 Style: ${STYLE_LABELS[draft.style]}
 Target length: ${getLengthGuide(draft.length)}
 
-Generate 3 alternative versions of this segment. Return ONLY a JSON object with this structure:
+Generate 3 alternative versions of this segment. Categorize each variation by its dominant approach. Return ONLY a JSON object with this structure:
 {
   "variations": [
-    { "label": "Angle 1", "text": "..." },
-    { "label": "Angle 2", "text": "..." },
-    { "label": "Angle 3", "text": "..." }
+    { "label": "Angle 1", "category": "emotional", "text": "..." },
+    { "label": "Angle 2", "category": "rational", "text": "..." },
+    { "label": "Angle 3", "category": "curiosity", "text": "..." }
   ]
-}`;
+}
+
+Use one of these categories for each variation: emotional, rational, curiosity, urgent, storytelling, bold, intimate, funny.
+Make sure the "text" value is a valid JSON string — preserve spaces, punctuation, and line breaks with \\n.`;
 
   return { system, user };
 }
 
-export function parseVariationsJson(raw: string): { label: string; text: string }[] | null {
+export interface SegmentVariation {
+  label: string;
+  text: string;
+  category?: string;
+}
+
+export function parseVariationsJson(raw: string): SegmentVariation[] | null {
   try {
     const jsonMatch = raw.match(/\{[\s\S]*\}/);
     const jsonStr = jsonMatch ? jsonMatch[0] : raw;
@@ -496,8 +508,9 @@ export function parseVariationsJson(raw: string): { label: string; text: string 
     if (parsed && Array.isArray(parsed.variations)) {
       return parsed.variations
         .filter((v: { text?: string }) => v.text)
-        .map((v: { label?: string; text: string }) => ({
+        .map((v: { label?: string; category?: string; text: string }) => ({
           label: v.label || "Variation",
+          category: v.category || "variation",
           text: v.text.trim(),
         }));
     }
@@ -522,7 +535,8 @@ Your job is to take an existing script and insert audio delivery tags to guide t
 Rules:
 - Only use tags from this exact list: ${ALL_AUDIO_TAGS.map((t) => `[${t}]`).join(", ")}.
 - Place tags inline, right before the words they affect. Tags can be layered, e.g. "[NERVOUS] I... I’m not sure this is going to work. [GULPS] But let’s try anyway."
-- Keep the original text meaningful. Do not rewrite ideas; only add tags and make small adjustments needed for natural delivery.
+- Do NOT change the words, ideas, or meaning of the script. Only add, remove, or reposition tags.
+- Preserve each segment's exact wording and sentence structure. The final text must contain every word from the original in the same order.
 - Match the requested tone (${TONE_LABELS[draft.tone]}) and style (${STYLE_LABELS[draft.style]}).
 - Tags should feel natural for a spoken voiceover, not random or excessive.
 - Respond with a JSON object only, preserving the original segment types and order.`;
@@ -541,6 +555,7 @@ ${segmentList}
 
 Tone: ${TONE_LABELS[draft.tone]}
 Style: ${STYLE_LABELS[draft.style]}
+${buildPersonalizationNote(preferences)}
 
 Return ONLY a JSON object with this structure:
 {
@@ -557,10 +572,11 @@ export interface SegmentAudioTagPromptInput {
   segment: ScriptSegment;
   draft: Draft;
   preferences: AggregatedPreferences | null;
+  previousVariations?: string[];
 }
 
 export function buildSegmentAudioTagPrompt(input: SegmentAudioTagPromptInput) {
-  const { segment, draft, preferences } = input;
+  const { segment, draft, preferences, previousVariations } = input;
 
   const system = `You are an expert voiceover director for short-form social media videos.
 Your job is to insert audio delivery tags into a SINGLE segment of an existing script.
@@ -569,17 +585,21 @@ Only use tags from this exact list: ${ALL_AUDIO_TAGS.map((t) => `[${t}]`).join("
 Rules:
 - Place tags inline, right before the words they affect.
 - Do NOT change the words, ideas, or meaning of the segment. Only add, remove, or reposition tags.
-- Preserve the segment's exact wording and sentence structure.
+- Preserve the segment's exact wording and sentence structure. The final text must contain every word from the original in the same order.
 - Match the requested tone (${TONE_LABELS[draft.tone]}) and style (${STYLE_LABELS[draft.style]}).
 - Tags should feel natural for a spoken voiceover, not random or excessive.
 - Respond with a JSON object only, preserving the original segment type and order.`;
+
+  const previousNote = previousVariations?.length
+    ? `\n\nPreviously generated tag variations (do NOT reproduce any of these; create a distinctly different placement/choice of tags):\n${previousVariations.map((v, i) => `${i + 1}. ${v}`).join("\n")}`
+    : "";
 
   const user = `Segment to tag:
 { "type": "${segment.type}", "text": ${JSON.stringify(stripAudioTags(segment.text))} }
 
 Tone: ${TONE_LABELS[draft.tone]}
 Style: ${STYLE_LABELS[draft.style]}
-${buildPersonalizationNote(preferences)}
+${buildPersonalizationNote(preferences)}${previousNote}
 
 Return ONLY a JSON object with this structure:
 {
@@ -623,4 +643,20 @@ export function stripAudioTags(text: string): string {
 
 export function hasAudioTags(text: string): boolean {
   return AUDIO_TAG_PATTERN.test(text);
+}
+
+export function normalizeAudioTagText(text: string): string {
+  // Normalize spacing around tags so "word [TAG] word" and "word  [TAG] word" are treated the same.
+  return text
+    .replace(AUDIO_TAG_PATTERN, "[$1]")
+    .replace(/\s*\[/g, " [")
+    .replace(/\]\s*/g, "] ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+export function getAudioTagSignature(text: string): string {
+  // Extract just the tags and their positions relative to words for comparison.
+  const tags = text.match(AUDIO_TAG_PATTERN) || [];
+  return tags.join(" ");
 }
